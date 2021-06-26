@@ -22,6 +22,7 @@
  *  - JSKOROST_IMPLEMENTATION
  *  - JSK_HASH
  *  - JSK_LOAD_FACTOR
+ *  - JSK_DEFAULT_ARRAY_SIZE
  *  - JSK_DEFAULT_OBJECT_SIZE
  *  - JSK_HEAP_CHUNK_SIZE
  *  - JSK_HEAP_MIN_OVERSIZED
@@ -66,6 +67,10 @@
 
 #ifndef JSK_LOAD_FACTOR
 #define JSK_LOAD_FACTOR ((float)(7.f / 8.f))
+#endif
+
+#ifndef JSK_DEFAULT_ARRAY_SIZE
+#define JSK_DEFAULT_ARRAY_SIZE 8
 #endif
 
 #ifndef JSK_DEFAULT_OBJECT_SIZE
@@ -201,6 +206,7 @@ JSK_EXPORT char *jsk_to_string(jsk_heap *heap, jsk_value v);
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#pragma GCC diagnostic ignored "-Wformat-zero-length"
 #endif
 
 #define JSK_LIKELY(x)    __builtin_expect((x),1)
@@ -391,8 +397,8 @@ typedef struct jks_token {
 typedef struct jsk_context {
 	jsk_heap *heap;
 	const char *const json;
-	unsigned len;
-	unsigned ptr;
+	unsigned long long len;
+	unsigned long long ptr;
 	jsk_token tkn;
 } jsk_context;
 
@@ -410,31 +416,28 @@ static double jsk_ten_pow(int exponent)
 		exponent = 325;
 
 	double result = 1;
-	while (1) {
-		if (exponent > 100) {
-			result *= 10e100;
-			exponent -= 100;
-		} else if (exponent > 50) {
-			result *= 10e50;
-			exponent -= 50;
-		} else if (exponent > 25) {
-			result *= 10e25;
-			exponent -= 25;
-		} else if (exponent > 10) {
-			result *= 10e10;
-			exponent -= 10;
-		} else if (exponent > 5) {
-			result *= 10e5;
-			exponent -= 5;
-		} else {
-			static const int m[] = {
-				1, 10, 100, 1000, 10000, 100000,
-			};
 
-			result *= m[exponent];
-			return recip ? 1.f / result : result;
-		}
+	while (exponent > 100) {
+		result *= 10e100;
+		exponent -= 100;
 	}
+
+	while (exponent > 33) {
+		result *= 10e33;
+		exponent -= 33;
+	}
+
+	while (exponent > 10) {
+		result *= 10e10;
+		exponent -= 10;
+	}
+
+	static const double m[] = {
+		1, 10, 100, 1000, 10e3, 10e4, 10e5, 10e6, 10e7, 10e8, 10e9,
+	};
+
+	result *= m[exponent];
+	return recip ? 1.f / result : result;
 }
 
 static void jsk_lex(jsk_context *ctx)
@@ -776,7 +779,7 @@ static void jsk_object_grow_and_rehash(jsk_object *obj)
 
 	obj->allocated *= 2;
 
-	const unsigned bytes = obj->allocated * sizeof(jsk_object);
+	const unsigned bytes = obj->allocated * sizeof(jsk_object_entry);
 	obj->entries = (jsk_object_entry *)jsk_heap_alloc(obj->heap,
 			bytes, JSK_VALUE_ALIGN);
 	memset(obj->entries, 0, bytes);
@@ -873,7 +876,7 @@ JSK_EXPORT void jsk_array_push(jsk_heap *h, jsk_value *array, jsk_value value)
 		vs[allocated] = value;
 		array->value = vs;
 	} else {
-		const unsigned n = 8;
+		const unsigned n = JSK_DEFAULT_ARRAY_SIZE;
 		const unsigned b = 2 * sizeof(unsigned) + n * sizeof(jsk_value);
 		unsigned *mem = (unsigned *)jsk_heap_alloc(h, b,
 				JSK_VALUE_ALIGN);
@@ -943,7 +946,7 @@ static jsk_result jsk_parse_value(jsk_context *ctx)
 
 		if (ctx->tkn.type != JSKT_RBRACK)
 			return jsk_error(ctx,
-				"Expected ']' after array at index %d",
+				"Expected ']' after array at index %llu",
 				ctx->ptr - 1);
 
 		jsk_lex(ctx);
@@ -962,7 +965,7 @@ static jsk_result jsk_parse_value(jsk_context *ctx)
 
 			if (ctx->tkn.type != JSKT_STRING)
 				return jsk_error(ctx,
-					"Expected object key at index %d",
+					"Expected object key at index %llu",
 					ctx->ptr - 1);
 
 			char *name = jsk_printf(ctx->heap, 1, "%.*s",
@@ -972,7 +975,7 @@ static jsk_result jsk_parse_value(jsk_context *ctx)
 
 			if (ctx->tkn.type != JSKT_COLON)
 				return jsk_error(ctx,
-					"Expected ':' at index %d",
+					"Expected ':' at index %llu",
 					ctx->ptr - 1);
 
 			jsk_lex(ctx);
@@ -986,7 +989,7 @@ static jsk_result jsk_parse_value(jsk_context *ctx)
 
 		if (ctx->tkn.type != JSKT_RBRACE)
 			return jsk_error(ctx,
-				"Expected '}' after array at index %d",
+				"Expected '}' after object at index %llu",
 				ctx->ptr - 1);
 
 		jsk_lex(ctx);
@@ -995,7 +998,7 @@ static jsk_result jsk_parse_value(jsk_context *ctx)
 	}
 
 	default:
-		return jsk_error(ctx, "Unexpected %s at index %d",
+		return jsk_error(ctx, "Unexpected %s at index %llu",
 			jsk_token_names[ctx->tkn.type], ctx->ptr - 1);
 	}
 }

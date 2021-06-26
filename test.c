@@ -161,6 +161,36 @@ static void test_objects(void **state)
 	jsk_heap_free(h);
 }
 
+static void test_object_rehash(void **state)
+{
+	(void)state;
+
+	jsk_heap *h = jsk_heap_new(NULL);
+
+	jsk_value a = jsk_new_object(h);
+
+	const char *keys[] = {
+		"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m",
+		"n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+	};
+
+	const unsigned n = sizeof(keys) / sizeof(keys[0]);
+
+	assert_true(n > JSK_DEFAULT_OBJECT_SIZE);
+
+	for (unsigned i = 0; i < n; i++)
+		jsk_object_insert(&a, keys[i], jsk_new_int(keys[i][0]));
+
+	for (unsigned i = 0; i < n; i++) {
+		jsk_value *v = jsk_object_get(a, keys[i]);
+		assert_non_null(v);
+		assert_int_equal(v->type, JSK_INT);
+		assert_int_equal(jsk_get_int_p(v), keys[i][0]);
+	}
+
+	jsk_heap_free(h);
+}
+
 static void test_parse_simple_values(void **state)
 {
 	(void)state;
@@ -197,31 +227,31 @@ static void test_parse_simple_values(void **state)
 	res = jsk_parse(h, json, strlen(json));
 	assert_int_equal(res.status, JSK_OK);
 	assert_int_equal(res.data.value.type, JSK_FLOAT);
-	assert_int_equal(jsk_get_float(res.data.value), 123.456);
+	assert_float_equal(jsk_get_float(res.data.value), 123.456, 0.001);
 
 	json = "123e5";
 	res = jsk_parse(h, json, strlen(json));
 	assert_int_equal(res.status, JSK_OK);
 	assert_int_equal(res.data.value.type, JSK_FLOAT);
-	assert_int_equal(jsk_get_float(res.data.value), 12300000.f);
+	assert_float_equal(jsk_get_float(res.data.value), 12300000.f, 0.001);
 
 	json = "123e+5";
 	res = jsk_parse(h, json, strlen(json));
 	assert_int_equal(res.status, JSK_OK);
 	assert_int_equal(res.data.value.type, JSK_FLOAT);
-	assert_int_equal(jsk_get_float(res.data.value), 12300000.f);
+	assert_float_equal(jsk_get_float(res.data.value), 12300000.f, 0.001);
 
 	json = "123e-7";
 	res = jsk_parse(h, json, strlen(json));
 	assert_int_equal(res.status, JSK_OK);
 	assert_int_equal(res.data.value.type, JSK_FLOAT);
-	assert_int_equal(jsk_get_float(res.data.value), 0.0000123f);
+	assert_float_equal(jsk_get_float(res.data.value), 0.0000123f, 0.001);
 
 	json = "1.23e3";
 	res = jsk_parse(h, json, strlen(json));
 	assert_int_equal(res.status, JSK_OK);
 	assert_int_equal(res.data.value.type, JSK_FLOAT);
-	assert_int_equal(jsk_get_float(res.data.value), 1230.f);
+	assert_float_equal(jsk_get_float(res.data.value), 1230.f, 0.001);
 
 	jsk_heap_free(h);
 }
@@ -463,6 +493,7 @@ int main(void)
 		cmocka_unit_test(test_strings),
 		cmocka_unit_test(test_arrays),
 		cmocka_unit_test(test_objects),
+		cmocka_unit_test(test_object_rehash),
 		cmocka_unit_test(test_parse_simple_values),
 		cmocka_unit_test(test_parse_strings),
 		cmocka_unit_test(test_parse_arrays),
