@@ -9,3 +9,4 @@ profiler
 *.gcda
 *.ws
 *.json
+vgcore.*
