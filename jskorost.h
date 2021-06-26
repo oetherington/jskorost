@@ -208,11 +208,12 @@ JSK_EXPORT char *jsk_to_string(jsk_heap *heap, jsk_value v);
 
 JSK_EXPORT jsk_heap *jsk_heap_new(void *ctx)
 {
-	jsk_heap *h = JSK_MALLOC(ctx, sizeof(jsk_heap));
+	jsk_heap *h = (jsk_heap *)JSK_MALLOC(ctx, sizeof(jsk_heap));
 	if (JSK_UNLIKELY(!h))
 		return NULL;
 
-	if (JSK_UNLIKELY(!(h->chunk = JSK_MALLOC(ctx, JSK_HEAP_CHUNK_SIZE)))) {
+	h->chunk = (char *)JSK_MALLOC(ctx, JSK_HEAP_CHUNK_SIZE);
+	if (JSK_UNLIKELY(!h->chunk)) {
 		JSK_FREE(ctx, h);
 		return NULL;
 	}
@@ -254,7 +255,7 @@ JSK_EXPORT void *jsk_heap_alloc(jsk_heap *h, unsigned bytes, unsigned align)
 
 	if (bytes >= JSK_HEAP_MIN_OVERSIZED) {
 		const unsigned n = bytes + sizeof(jsk_oversized *);
-		jsk_oversized *o = JSK_MALLOC(h->ctx, n);
+		jsk_oversized *o = (jsk_oversized *)JSK_MALLOC(h->ctx, n);
 		if (JSK_UNLIKELY(!o))
 			return NULL;
 		o->next = h->oversized;
@@ -293,7 +294,7 @@ static void *jsk_heap_unify(jsk_heap *heap, int null_terminate)
 		h = h->next;
 	}
 
-	char *mem = JSK_MALLOC(heap->ctx, bytes);
+	char *mem = (char *)JSK_MALLOC(heap->ctx, bytes);
 	if (JSK_UNLIKELY(!mem))
 		return NULL;
 
@@ -319,7 +320,7 @@ static char *jsk_vprintf(jsk_heap *h, int null_terminate,
 	const unsigned needed = vsnprintf(s, len, fmt, args) + 1;
 
 	if (needed > len) {
-		s = jsk_heap_alloc(h, needed, 1);
+		s = (char *)jsk_heap_alloc(h, needed, 1);
 		vsnprintf(s, needed, fmt, args);
 		return s;
 	}
@@ -376,7 +377,7 @@ typedef enum jsk_token_type {
 } jsk_token_type;
 
 static const char *jsk_token_names[] = {
-#define JSK_X(t, n, s) [t] = s,
+#define JSK_X(t, n, s) s,
 	JSK_TOKENS
 #undef JSK_X
 };
@@ -503,7 +504,7 @@ lex_next:
 		goto lex_next;
 
 	case L_CHR:
-		ctx->tkn.type = c;
+		ctx->tkn.type = (jsk_token_type)c;
 		ctx->ptr++;
 		return;
 
@@ -594,9 +595,9 @@ lex_next:
 		}
 
 		if (ctx->tkn.type == JSKT_FLOAT)
-			ctx->tkn.data = *(void**)&f;
+			ctx->tkn.data = (char *)*(void**)&f;
 		else
-			ctx->tkn.data = *(void**)&n;
+			ctx->tkn.data = (char *)*(void**)&n;
 
 		ctx->tkn.len = 0;
 
@@ -686,7 +687,7 @@ static unsigned jsk_unescape(char *dest, const char *const src)
 JSK_EXPORT jsk_value jsk_new_string_escaped(jsk_heap *h, const char *const s,
 		unsigned len)
 {
-	char *mem = jsk_heap_alloc(h, len + 1, 1);
+	char *mem = (char *)jsk_heap_alloc(h, len + 1, 1);
 
 	unsigned dest = 0;
 
@@ -713,7 +714,7 @@ JSK_EXPORT jsk_value jsk_new_string_escaped(jsk_heap *h, const char *const s,
 JSK_EXPORT jsk_value jsk_new_string_len(jsk_heap *h, const char *const s,
 		unsigned len)
 {
-	char *mem = jsk_heap_alloc(h, len + 1, 1);
+	char *mem = (char *)jsk_heap_alloc(h, len + 1, 1);
 	memcpy(mem, s, len);
 	mem[len] = 0;
 	return (jsk_value){ JSK_STRING, mem };
@@ -726,7 +727,7 @@ JSK_EXPORT jsk_value jsk_new_string(jsk_heap *h, const char *const s)
 
 JSK_EXPORT jsk_value jsk_new_object(jsk_heap *h)
 {
-	jsk_object *obj = jsk_heap_alloc(h, sizeof(jsk_object),
+	jsk_object *obj = (jsk_object *)jsk_heap_alloc(h, sizeof(jsk_object),
 			JSK_VALUE_ALIGN);
 
 	if (JSK_UNLIKELY(!obj))
@@ -737,7 +738,8 @@ JSK_EXPORT jsk_value jsk_new_object(jsk_heap *h)
 	obj->count = 0;
 
 	const unsigned bytes = obj->allocated * sizeof(jsk_object_entry);
-	obj->entries = jsk_heap_alloc(h, bytes, JSK_VALUE_ALIGN);
+	obj->entries = (jsk_object_entry *)jsk_heap_alloc(h, bytes,
+			JSK_VALUE_ALIGN);
 
 	if (JSK_UNLIKELY(!obj->entries))
 		return jsk_new_null();
@@ -775,7 +777,8 @@ static void jsk_object_grow_and_rehash(jsk_object *obj)
 	obj->allocated *= 2;
 
 	const unsigned bytes = obj->allocated * sizeof(jsk_object);
-	obj->entries = jsk_heap_alloc(obj->heap, bytes, JSK_VALUE_ALIGN);
+	obj->entries = (jsk_object_entry *)jsk_heap_alloc(obj->heap,
+			bytes, JSK_VALUE_ALIGN);
 	memset(obj->entries, 0, bytes);
 
 	for (unsigned i = 0; i < old_allocated; i++) {
@@ -788,7 +791,7 @@ static void jsk_object_grow_and_rehash(jsk_object *obj)
 JSK_EXPORT void jsk_object_insert(jsk_value *object,
 		const char *const name, jsk_value value)
 {
-	jsk_object *obj = object->value;
+	jsk_object *obj = (jsk_object *)object->value;
 
 	obj->count++;
 
@@ -801,7 +804,7 @@ JSK_EXPORT void jsk_object_insert(jsk_value *object,
 
 JSK_EXPORT jsk_value *jsk_object_get(jsk_value object, const char *const name)
 {
-	jsk_object *obj = object.value;
+	jsk_object *obj = (jsk_object *)object.value;
 
 	const jsk_u64 hash = JSK_HASH(name);
 
@@ -823,7 +826,7 @@ JSK_EXPORT jsk_value *jsk_object_get(jsk_value object, const char *const name)
 
 JSK_EXPORT jsk_object_iter jsk_object_iterate(jsk_value object)
 {
-	return (jsk_object_iter){ object.value, 0, };
+	return (jsk_object_iter){ (jsk_object *)object.value, 0, };
 }
 
 JSK_EXPORT jsk_object_entry *jsk_object_next(jsk_object_iter *i)
@@ -849,7 +852,7 @@ JSK_EXPORT unsigned jsk_array_length(jsk_value array)
 JSK_EXPORT void jsk_array_push(jsk_heap *h, jsk_value *array, jsk_value value)
 {
 	if (array->value) {
-		jsk_value *vs = array->value;
+		jsk_value *vs = (jsk_value *)array->value;
 		const unsigned allocated = ((unsigned *)vs)[-2];
 		const unsigned len = ((unsigned *)vs)[-1];
 
@@ -861,7 +864,8 @@ JSK_EXPORT void jsk_array_push(jsk_heap *h, jsk_value *array, jsk_value value)
 
 		const unsigned n = allocated * 2;
 		const unsigned b = 2 * sizeof(unsigned) + n * sizeof(jsk_value);
-		unsigned *mem = jsk_heap_alloc(h, b, JSK_VALUE_ALIGN);
+		unsigned *mem = (unsigned *)jsk_heap_alloc(h, b,
+				JSK_VALUE_ALIGN);
 		mem[0] = n;
 		mem[1] = len + 1;
 		jsk_value *new_vs = (jsk_value *)&mem[2];
@@ -871,7 +875,8 @@ JSK_EXPORT void jsk_array_push(jsk_heap *h, jsk_value *array, jsk_value value)
 	} else {
 		const unsigned n = 8;
 		const unsigned b = 2 * sizeof(unsigned) + n * sizeof(jsk_value);
-		unsigned *mem = jsk_heap_alloc(h, b, JSK_VALUE_ALIGN);
+		unsigned *mem = (unsigned *)jsk_heap_alloc(h, b,
+				JSK_VALUE_ALIGN);
 		mem[0] = n;
 		mem[1] = 1;
 		jsk_value *vs = (jsk_value *)&mem[2];
@@ -1003,7 +1008,7 @@ JSK_EXPORT jsk_result jsk_parse(jsk_heap *heap,
 		json,
 		len,
 		0,
-		(jsk_token){ 0, 0, 0, },
+		(jsk_token){ JSKT_INVALID, 0, 0, },
 	};
 
 	jsk_lex(&ctx);
@@ -1055,7 +1060,7 @@ static void jsk_to_string_internal(jsk_heap *h, jsk_value v)
 
 		jsk_object_iter it = jsk_object_iterate(v);
 		jsk_object_entry *e;
-		char *comma = "";
+		const char *comma = "";
 		while ((e = jsk_object_next(&it))) {
 			jsk_printf(h, 0, "%s\"%s\":", comma, e->key);
 			jsk_to_string_internal(h, e->value);
@@ -1083,7 +1088,7 @@ static void jsk_to_string_internal(jsk_heap *h, jsk_value v)
 	}
 
 	case JSK_STRING:
-		jsk_print_unescaped_string(h, 0, v.value);
+		jsk_print_unescaped_string(h, 0, (char *)v.value);
 		return;
 
 	case JSK_INT:
@@ -1109,7 +1114,7 @@ JSK_EXPORT char *jsk_to_string(jsk_heap *heap, jsk_value v)
 	jsk_heap *string_heap = jsk_heap_new(heap->ctx);
 	jsk_to_string_internal(string_heap, v);
 	jsk_printf(heap, 1, "");
-	char *s = jsk_heap_unify(string_heap, 1);
+	char *s = (char *)jsk_heap_unify(string_heap, 1);
 	jsk_heap_free(string_heap);
 	return s;
 }

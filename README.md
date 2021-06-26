@@ -14,8 +14,9 @@ installed.
 ## Contributing
 
 Contributions are welcome - just send a pull request. Please follow the Linux
-kernel style guide and make sure your code compiles without warnings in Clang
-and GCC with `-W -Wall -Wextra -pedantic`.
+kernel style guide and make sure your code compiles without warnings in clang
+and gcc with `-W -Wall -Wextra -pedantic` and in clang++ and g++ with
+`-W -Wall -Wextra`.
 
 ## License
 

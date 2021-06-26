@@ -1,4 +1,5 @@
 #define JSKOROST_IMPLEMENTATION
+// #pragma clang diagnostic ignored "-Wc99-extensions"
 #include "jskorost.h"
 #include <time.h>
 
@@ -20,7 +21,7 @@ int main(int argc, char **argv)
 	const long length = ftell(f);
 	fseek(f, 0, SEEK_SET);
 
-	char *buffer = malloc(length);
+	char *buffer = (char *)malloc(length);
 	if (!buffer) {
 		fprintf(stderr, "Can't allocate file buffer\n");
 		return 1;
