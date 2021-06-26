@@ -1,0 +1,11 @@
+example
+test
+profiler
+*.o
+*.dll
+*.so
+*.a
+*.gcno
+*.gcda
+*.ws
+*.json
