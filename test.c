@@ -52,6 +52,27 @@ static void test_heap_oversized(void **state)
 	jsk_heap_free(h);
 }
 
+static void test_string_formatting(void **state)
+{
+	(void)state;
+
+	jsk_heap *h = jsk_heap_new(NULL);
+
+	char *s = jsk_printf(h, 1, "Hello %s", "World");
+	assert_string_equal(s, "Hello World");
+
+	jsk_context ctx;
+	ctx.heap = h;
+	ctx.tkn.type = JSKT_INT;
+	ctx.ptr = 1;
+	jsk_result res = jsk_expected(&ctx, "a float");
+	assert_int_equal(res.status, JSK_ERROR);
+	s = res.data.error;
+	assert_string_equal(s, "Expected a float at index 0 but found int");
+
+	jsk_heap_free(h);
+}
+
 static void test_simple_values(void **state)
 {
 	(void)state;
@@ -282,6 +303,12 @@ static void test_parse_strings(void **state)
 	assert_int_equal(res.data.value.type, JSK_STRING);
 	assert_string_equal(jsk_get_string(res.data.value), "Hello\"World");
 
+	json = "\"Hello World\\\\\"";
+	res = jsk_parse(h, json, strlen(json));
+	assert_int_equal(res.status, JSK_OK);
+	assert_int_equal(res.data.value.type, JSK_STRING);
+	assert_string_equal(jsk_get_string(res.data.value), "Hello World\\");
+
 	jsk_heap_free(h);
 }
 
@@ -489,6 +516,7 @@ int main(void)
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(test_heap),
 		cmocka_unit_test(test_heap_oversized),
+		cmocka_unit_test(test_string_formatting),
 		cmocka_unit_test(test_simple_values),
 		cmocka_unit_test(test_strings),
 		cmocka_unit_test(test_arrays),

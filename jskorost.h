@@ -88,6 +88,12 @@
 #endif
 
 #ifdef __cplusplus
+#define JSK_RESTRICT __restrict__
+#else
+#define JSK_RESTRICT restrict
+#endif
+
+#ifdef __cplusplus
 extern "C" {
 #endif
 
@@ -677,7 +683,8 @@ JSK_EXPORT jsk_value jsk_new_float(double f)
 	return (jsk_value){ JSK_FLOAT, *(void **)(&(f)) };
 }
 
-static unsigned jsk_unescape(char *dest, const char *const src)
+static unsigned jsk_unescape(char *JSK_RESTRICT dest,
+		const char *JSK_RESTRICT src)
 {
 	switch (*src) {
 	case '"':	*dest = '"';	return 1;
@@ -989,8 +996,10 @@ static jsk_result jsk_parse_value(jsk_context *ctx)
 			if (ctx->tkn.type != JSKT_STRING)
 				return jsk_expected(ctx, "object key");
 
-			char *name = jsk_printf(ctx->heap, 1, "%.*s",
-					ctx->tkn.len, ctx->tkn.data);
+			char *name = (char *)jsk_heap_alloc(ctx->heap,
+					ctx->tkn.len + 1, 1);
+			memcpy(name, ctx->tkn.data, ctx->tkn.len);
+			name[ctx->tkn.len] = 0;
 
 			jsk_verbose("D OBJECT KEY %s @ %llu\n", name, ctx->ptr);
 

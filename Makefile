@@ -26,7 +26,7 @@ test: CFLAGS += -O1 -g3 -fno-omit-frame-pointer
 test:
 	$(CC) $(CFLAGS) $(TEST_FLAGS) $(TEST_SRC) -o $(TEST_TARGET)
 
-profiler: CFLAGS += -Ofast -g0 -s -fomit-frame-pointer
+profiler: CXXFLAGS += -Ofast -g0 -s -fomit-frame-pointer -flto
 profiler:
 	$(CXX) $(CXXFLAGS) $(PROFILER_FLAGS) $(PROFILER_SRC) -o $(PROFILER_TARGET)
 

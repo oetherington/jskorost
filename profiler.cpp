@@ -1,7 +1,10 @@
 #define JSKOROST_IMPLEMENTATION
-// #pragma clang diagnostic ignored "-Wc99-extensions"
 #include "jskorost.h"
 #include <time.h>
+
+#include "rapidjson/include/rapidjson/document.h"
+#include "rapidjson/include/rapidjson/writer.h"
+#include "rapidjson/include/rapidjson/stringbuffer.h"
 
 int main(int argc, char **argv)
 {
@@ -32,21 +35,40 @@ int main(int argc, char **argv)
 
 	jsk_heap *h = jsk_heap_new(NULL);
 
-	clock_t start = clock();
+	clock_t start, end;
+	double time_used;
+	jsk_result res;
 
-	jsk_result res = jsk_parse(h, buffer, length);
+	std::string s(buffer, length);
+	const char *cs = s.c_str();
+
+	start = clock();
+
+	rapidjson::Document d;
+	d.Parse(cs);
+
+	end = clock();
+
+	time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
+
+	printf("RapidJSON successfully parsed: %f\n", time_used);
+
+	start = clock();
+
+	res = jsk_parse(h, buffer, length);
 	if (res.status != JSK_OK) {
-		fprintf(stderr, "Failed to parse JSON");
+		fprintf(stderr, "JSkorost failed to parse JSON: %s\n", res.data.error);
 		return 1;
 	}
 
-	clock_t end = clock();
+	end = clock();
 
 	jsk_heap_free(h);
 
-	double time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
+	time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
 
-	printf("Successfully parsed: %f\n", time_used);
+	printf("JSkorost successfully parsed: %f (%f/sec)\n", time_used,
+			length / time_used);
 
 	return 0;
 }
