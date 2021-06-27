@@ -31,6 +31,7 @@
  *  - JSK_EXPORT
  *  - JSK_NO_STDLIB
  *  - JSK_DEBUG
+ *  - JSK_DEBUG_VERBOSE
 */
 
 #ifndef JSKOROST_H
@@ -78,6 +79,12 @@
 #endif
 
 #define JSK_VALUE_ALIGN 8
+
+#ifdef JSK_DEBUG_VERBOSE
+#define jsk_verbose(...) printf(__VA_ARGS__)
+#else
+#define jsk_verbose(...)
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -160,13 +167,13 @@ JSK_EXPORT jsk_object_entry *jsk_object_next(jsk_object_iter *i);
 #define jsk_get_bool(v) ((int)(long long)(v).value)
 #define jsk_get_int(v) (*(long long *)&(v).value)
 #define jsk_get_float(v) (*(double *)&(v).value)
-#define jsk_get_string(v) ((v).value)
+#define jsk_get_string(v) ((char *)(v).value)
 #define jsk_get_object(v) ((jsk_object *)(v).value)
 
 #define jsk_get_bool_p(v) ((int)(long long)(v)->value)
 #define jsk_get_int_p(v) (*(long long *)&(v)->value)
 #define jsk_get_float_p(v) (*(double *)&(v)->value)
-#define jsk_get_string_p(v) ((v)->value)
+#define jsk_get_string_p(v) ((char *)(v)->value)
 #define jsk_get_object_p(v) ((jsk_object *)(v)->value)
 
 #define jsk_object_count(v) jsk_get_object(v)->count
@@ -321,8 +328,9 @@ static void *jsk_heap_unify(jsk_heap *heap, int null_terminate)
 static char *jsk_vprintf(jsk_heap *h, int null_terminate,
 		const char *const fmt, va_list args)
 {
-	unsigned len = JSK_HEAP_CHUNK_SIZE - h->ptr;
-	char *s = &h->chunk[h->ptr];
+	jsk_heap *tail = h->tail;
+	const unsigned len = JSK_HEAP_CHUNK_SIZE - tail->ptr;
+	char *s = &tail->chunk[tail->ptr];
 	const unsigned needed = vsnprintf(s, len, fmt, args) + 1;
 
 	if (needed > len) {
@@ -331,7 +339,7 @@ static char *jsk_vprintf(jsk_heap *h, int null_terminate,
 		return s;
 	}
 
-	h->ptr += needed - (null_terminate ? 0 : 1);
+	tail->ptr += needed - (null_terminate ? 0 : 1);
 	return s;
 }
 
@@ -485,19 +493,7 @@ lex_next:
 		return;
 	}
 
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wchar-subscripts"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wchar-subscripts"
-#endif
-	switch (dispatch[c]) {
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+	switch (dispatch[(int)c]) {
 	case L_INV:
 		ctx->tkn.type = JSKT_INVALID;
 		return;
@@ -515,7 +511,7 @@ lex_next:
 		ctx->ptr++;
 		ctx->tkn.data = &ctx->json[ctx->ptr];
 
-		while (1) {
+		for (unsigned escapes = 0; 1; ctx->ptr++) {
 			if (JSK_UNLIKELY(ctx->ptr == ctx->len)) {
 				ctx->tkn.type = JSKT_INVALID;
 				return;
@@ -523,15 +519,17 @@ lex_next:
 
 			const char c0 = ctx->json[ctx->ptr];
 
-			if (c0 == c && ctx->json[ctx->ptr - 1] != '\\') {
+			if (c0 == c && ~escapes & 1) {
 				const char *end = &ctx->json[ctx->ptr];
 				ctx->tkn.len = end - ctx->tkn.data;
 				ctx->tkn.type = JSKT_STRING;
 				ctx->ptr++;
 				return;
+			} else if (c0 == '\\') {
+				escapes++;
+			} else {
+				escapes = 0;
 			}
-
-			ctx->ptr++;
 		}
 
 	case L_NUM: {
@@ -692,20 +690,20 @@ JSK_EXPORT jsk_value jsk_new_string_escaped(jsk_heap *h, const char *const s,
 {
 	char *mem = (char *)jsk_heap_alloc(h, len + 1, 1);
 
-	unsigned dest = 0;
+	unsigned dest = 0, src = 0;
 
-	for (unsigned src = 0; src < len; src++) {
+	while (src < len) {
 		if (s[src] == '\\') {
 			src++;
 			if (JSK_UNLIKELY(src >= len))
-				return jsk_new_null();
+				break;
 			const unsigned b = jsk_unescape(&mem[dest], &s[src]);
 			if (JSK_UNLIKELY(b == 0))
-				return jsk_new_null();
-			src += b - 1;
+				break;
+			src++;
 			dest += b;
 		} else {
-			mem[dest++] = s[src];
+			mem[dest++] = s[src++];
 		}
 	}
 
@@ -888,6 +886,12 @@ JSK_EXPORT void jsk_array_push(jsk_heap *h, jsk_value *array, jsk_value value)
 	}
 }
 
+static jsk_result jsk_expected(jsk_context *ctx, const char *const what)
+{
+	return jsk_error(ctx, "Expected %s at index %llu but found %s",
+			what, ctx->ptr - 1, jsk_token_names[ctx->tkn.type]);
+}
+
 static jsk_result jsk_parse_value(jsk_context *ctx)
 {
 	switch (ctx->tkn.type) {
@@ -896,6 +900,7 @@ static jsk_result jsk_parse_value(jsk_context *ctx)
 			JSK_INT,
 			(void*)ctx->tkn.data,
 		};
+		jsk_verbose("D INT %lld @ %llu\n", jsk_get_int(v), ctx->ptr);
 		jsk_lex(ctx);
 		return jsk_success(v);
 	}
@@ -905,6 +910,7 @@ static jsk_result jsk_parse_value(jsk_context *ctx)
 			JSK_FLOAT,
 			(void*)ctx->tkn.data,
 		};
+		jsk_verbose("D FLT %f @ %llu\n", jsk_get_float(v), ctx->ptr);
 		jsk_lex(ctx);
 		return jsk_success(v);
 	}
@@ -912,23 +918,29 @@ static jsk_result jsk_parse_value(jsk_context *ctx)
 	case JSKT_STRING: {
 		const jsk_value v = jsk_new_string_escaped(ctx->heap,
 				ctx->tkn.data, ctx->tkn.len);
+		jsk_verbose("D STR %s @ %llu\n", jsk_get_string(v), ctx->ptr);
 		jsk_lex(ctx);
 		return jsk_success(v);
 	}
 
 	case JSKT_TRUE:
+		jsk_verbose("D TRUE @ %llu\n", ctx->ptr);
 		jsk_lex(ctx);
 		return jsk_success(jsk_new_bool(1));
 
 	case JSKT_FALSE:
+		jsk_verbose("D FALSE @ %llu\n", ctx->ptr);
 		jsk_lex(ctx);
 		return jsk_success(jsk_new_bool(0));
 
 	case JSKT_NULL:
+		jsk_verbose("D NULL @ %llu\n", ctx->ptr);
 		jsk_lex(ctx);
 		return jsk_success(jsk_new_null());
 
 	case JSKT_LBRACK: {
+		jsk_verbose("D ARRAY @ %llu\n", ctx->ptr);
+
 		jsk_value a = jsk_new_array();
 
 		do {
@@ -945,9 +957,7 @@ static jsk_result jsk_parse_value(jsk_context *ctx)
 		} while (ctx->tkn.type == JSKT_COMMA);
 
 		if (ctx->tkn.type != JSKT_RBRACK)
-			return jsk_error(ctx,
-				"Expected ']' after array at index %llu",
-				ctx->ptr - 1);
+			return jsk_expected(ctx, "']' after array");
 
 		jsk_lex(ctx);
 
@@ -955,6 +965,8 @@ static jsk_result jsk_parse_value(jsk_context *ctx)
 	}
 
 	case JSKT_LBRACE: {
+		jsk_verbose("D OBJECT @ %llu\n", ctx->ptr);
+
 		jsk_value o = jsk_new_object(ctx->heap);
 
 		do {
@@ -964,19 +976,17 @@ static jsk_result jsk_parse_value(jsk_context *ctx)
 				break;
 
 			if (ctx->tkn.type != JSKT_STRING)
-				return jsk_error(ctx,
-					"Expected object key at index %llu",
-					ctx->ptr - 1);
+				return jsk_expected(ctx, "object key");
 
 			char *name = jsk_printf(ctx->heap, 1, "%.*s",
 					ctx->tkn.len, ctx->tkn.data);
 
+			jsk_verbose("D OBJECT KEY %s @ %llu\n", name, ctx->ptr);
+
 			jsk_lex(ctx);
 
 			if (ctx->tkn.type != JSKT_COLON)
-				return jsk_error(ctx,
-					"Expected ':' at index %llu",
-					ctx->ptr - 1);
+				return jsk_expected(ctx, "':'");
 
 			jsk_lex(ctx);
 
@@ -988,9 +998,7 @@ static jsk_result jsk_parse_value(jsk_context *ctx)
 		} while (ctx->tkn.type == JSKT_COMMA);
 
 		if (ctx->tkn.type != JSKT_RBRACE)
-			return jsk_error(ctx,
-				"Expected '}' after object at index %llu",
-				ctx->ptr - 1);
+			return jsk_expected(ctx, "'}' after object");
 
 		jsk_lex(ctx);
 
