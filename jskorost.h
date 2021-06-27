@@ -26,6 +26,7 @@
  *  - JSK_DEFAULT_OBJECT_SIZE
  *  - JSK_HEAP_CHUNK_SIZE
  *  - JSK_HEAP_MIN_OVERSIZED
+ *  - JSK_RESTRICT
  *  - JSK_MALLOC
  *  - JSK_FREE
  *  - JSK_EXPORT
@@ -87,10 +88,12 @@
 #define jsk_verbose(...)
 #endif
 
+#ifndef JSK_RESTRICT
 #ifdef __cplusplus
 #define JSK_RESTRICT __restrict__
 #else
 #define JSK_RESTRICT restrict
+#endif
 #endif
 
 #ifdef __cplusplus
