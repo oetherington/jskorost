@@ -32,6 +32,7 @@
  *  - JSK_NO_STDLIB
  *  - JSK_DEBUG
  *  - JSK_DEBUG_VERBOSE
+ *  - JSK_DEBUG_ALLOC
 */
 
 #ifndef JSKOROST_H
@@ -263,6 +264,10 @@ JSK_EXPORT void jsk_heap_free(jsk_heap *h)
 
 JSK_EXPORT void *jsk_heap_alloc(jsk_heap *h, unsigned bytes, unsigned align)
 {
+#ifdef JSK_DEBUG_ALLOC
+	return (void *)JSK_MALLOC(h->ctx, bytes);
+#endif
+
 	jsk_heap *head = h;
 	h = h->tail;
 
@@ -330,7 +335,13 @@ static char *jsk_vprintf(jsk_heap *h, int null_terminate,
 {
 	jsk_heap *tail = h->tail;
 	const unsigned len = JSK_HEAP_CHUNK_SIZE - tail->ptr;
+
+#ifdef JSK_DEBUG_ALLOC
+	char *s = (char *)JSK_MALLOC(h->ctx, len);
+#else
 	char *s = &tail->chunk[tail->ptr];
+#endif
+
 	const unsigned needed = vsnprintf(s, len, fmt, args) + 1;
 
 	if (needed > len) {
@@ -871,8 +882,8 @@ JSK_EXPORT void jsk_array_push(jsk_heap *h, jsk_value *array, jsk_value value)
 		mem[1] = len + 1;
 		jsk_value *new_vs = (jsk_value *)&mem[2];
 		memcpy(new_vs, vs, allocated * sizeof(jsk_value));
-		vs[allocated] = value;
-		array->value = vs;
+		new_vs[allocated] = value;
+		array->value = new_vs;
 	} else {
 		const unsigned n = JSK_DEFAULT_ARRAY_SIZE;
 		const unsigned b = 2 * sizeof(unsigned) + n * sizeof(jsk_value);
